@@ -1,0 +1,19 @@
+# Veri ve model dosyaları (büyük, GitHub'a konmaz)
+datasets/
+checkpoints/
+*.wav
+*.pt
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editör / sistem
+.DS_Store
+Thumbs.db
