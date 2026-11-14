@@ -7,9 +7,9 @@ metin açıklaması arasındaki anlamsal uyum için insan puanını tahmin eden 
 ## Grup Üyeleri
 
 | Ad Soyad | Öğrenci No | GitHub |
-|---|---|---|
-| | | |
-| | | |
+|Aleyna İzgi | 26832901020 | aley22 |
+|Zeynep Saliha Sertçelik | 26832901023 | deafiduck |
+
 
 ## Veri Kümesi
 
@@ -36,7 +36,7 @@ src/
 
 ## Yaklaşım
 
-_(doldurulacak)_
+(doldurulacak)
 
 ## Sonuçlar (validation)
 

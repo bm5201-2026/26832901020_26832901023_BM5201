@@ -1,4 +1,4 @@
-# Veri ve model dosyaları (büyük, GitHub'a konmaz)
+# Veri ve model dosyaları
 datasets/
 checkpoints/
 *.wav
