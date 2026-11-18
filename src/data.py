@@ -7,6 +7,7 @@ Beklenen klasör yapısı:
 """
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import soundfile as sf
 
@@ -82,3 +83,57 @@ def audio_info(path: Path | str) -> dict:
         "sample_rate": info.samplerate,
         "channels": info.channels,
     }
+
+
+def _to_db(x: float, floor: float = 1e-10) -> float:
+    """Genliği desibele (dBFS) çevirir; 0 dB = dijital tam ölçek."""
+    return float(20 * np.log10(max(x, floor)))
+
+
+def audio_features(path: Path | str, frame_sec: float = 0.025,
+                   silence_db: float = -50.0) -> dict:
+    """Bir ses dosyası için format bilgisi ve basit yükseklik ölçüleri.
+
+    duration, sample_rate, channels : dosya formatı
+    rms_db       : ortalama ses yüksekliği (dBFS)
+    peak_db      : en yüksek örneğin seviyesi (dBFS)
+    silence_ratio: RMS'i `silence_db` altında kalan 25 ms'lik çerçevelerin oranı
+    """
+    y, sr = sf.read(str(path), dtype="float32", always_2d=True)
+    channels = y.shape[1]
+    y = y.mean(axis=1)  # mono'ya indir
+
+    frame = max(1, int(sr * frame_sec))
+    n_frames = len(y) // frame
+    if n_frames > 0:
+        frames = y[: n_frames * frame].reshape(n_frames, frame)
+        frame_rms = np.sqrt(np.mean(frames ** 2, axis=1))
+        silence_ratio = float(np.mean(20 * np.log10(np.maximum(frame_rms, 1e-10)) < silence_db))
+    else:
+        silence_ratio = 1.0
+
+    return {
+        "duration": len(y) / sr,
+        "sample_rate": sr,
+        "channels": channels,
+        "rms_db": _to_db(np.sqrt(np.mean(y ** 2)) if len(y) else 0.0),
+        "peak_db": _to_db(np.max(np.abs(y)) if len(y) else 0.0),
+        "silence_ratio": silence_ratio,
+    }
+
+
+def compute_audio_features(df: pd.DataFrame, root: Path | str = DEFAULT_ROOT,
+                           n_jobs: int = 8) -> pd.DataFrame:
+    """df'teki her ses (split + wav_file_name) için `audio_features` hesaplar."""
+    from concurrent.futures import ThreadPoolExecutor
+    from tqdm.auto import tqdm
+
+    keys = list(df[["split", FILE_COL]].itertuples(index=False, name=None))
+
+    def one(key):
+        split, name = key
+        return {"split": split, FILE_COL: name, **audio_features(audio_path(split, name, root))}
+
+    with ThreadPoolExecutor(max_workers=n_jobs) as ex:
+        rows = list(tqdm(ex.map(one, keys), total=len(keys), desc="Ses dosyaları"))
+    return pd.DataFrame(rows)
