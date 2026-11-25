@@ -7,10 +7,13 @@ Bütün modeller aynı arayüzü kullanır:
 Böylece notebook'ta hepsi aynı döngüyle eğitilip değerlendirilebilir.
 """
 import numpy as np
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
-from .data import TEXT_COL
+from .data import MODEL_COL, TEXT_COL
 
 
 class MeanBaseline:
@@ -42,3 +45,68 @@ class TfidfRidge:
     def predict(self, df):
         X = self.tfidf.transform(df[TEXT_COL].astype(str))
         return self.ridge.predict(X)
+
+
+class AudioFeatRidge:
+    """A) Sadece sesin basit ölçülerine bakan model.
+
+    7. bölümde hesapladığımız 4 ölçüyü kullanıyor: süre, ortalama ses yüksekliği,
+    en yüksek ses seviyesi ve sessizlik oranı. Metne hiç bakmıyor.
+    """
+
+    def __init__(self, cols=("duration", "rms_db", "peak_db", "silence_ratio"), alpha=1.0):
+        self.cols = list(cols)
+        # ölçülerin birimleri farklı (saniye, dB, oran) o yüzden önce hepsini
+        # aynı ölçeğe getiriyoruz (StandardScaler), sonra Ridge ile puan tahmin ediyoruz
+        self.model = make_pipeline(StandardScaler(), Ridge(alpha=alpha))
+
+    def fit(self, df, y):
+        self.model.fit(df[self.cols], y)
+        return self
+
+    def predict(self, df):
+        return self.model.predict(df[self.cols])
+
+
+class GeneratorMean:
+    """B) Sesi hangi program ürettiyse o programın train'deki ortalama puanını verir.
+
+    Sese de metne de bakmıyor, sadece program adını kullanıyor.
+    Amacımız bu bilginin tek başına ne kadar işe yaradığını görmek. Yarışmanın
+    asıl testinde programlar yeni olacağı için bu yöntem orada çalışmaz.
+    """
+
+    def fit(self, df, y):
+        tablo = pd.DataFrame({"program": df[MODEL_COL].to_numpy(), "puan": np.asarray(y, dtype=float)})
+        # her programın ortalama puanı
+        self.ortalamalar_ = tablo.groupby("program")["puan"].mean().to_dict()
+        # hiç görmediğimiz bir program gelirse kullanmak için genel ortalama
+        self.genel_ortalama_ = float(tablo["puan"].mean())
+        return self
+
+    def predict(self, df):
+        tahmin = df[MODEL_COL].map(self.ortalamalar_)
+        # train'de olmayan program -> genel ortalama
+        return tahmin.fillna(self.genel_ortalama_).to_numpy(dtype=float)
+
+
+class ClapSimilarity:
+    """C) CLAP ile ses ve metnin ne kadar benzediğine bakan model.
+
+    Benzerlik değerleri önceden src/features.py ile hesaplanıp tabloya
+    "clap_sim" sütunu olarak eklenmiş olmalı.
+
+    Benzerlik -1 ile 1 arasında, puanlar ise 0-10 arasında. fit() sadece bu ölçeği
+    çevirmek için basit bir doğru uyduruyor (puan = a * benzerlik + b).
+    Sıralama değişmediği için SRCC, eğitimsiz benzerlikle aynı çıkıyor.
+    """
+
+    def __init__(self, col="clap_sim"):
+        self.col = col
+
+    def fit(self, df, y):
+        self.olcek = LinearRegression().fit(df[[self.col]], y)
+        return self
+
+    def predict(self, df):
+        return self.olcek.predict(df[[self.col]])
